@@ -1,0 +1,65 @@
+[tool.poetry]
+name = "idu-balance-db"
+version = "0.1.0"
+description = "IDU Lab utility to balance cities population"
+authors = ["Aleksei Sokol <kanootoko@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "idu_balance_db" }]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+]
+
+[tool.poetry.urls]
+"Repository" = "https://github.com/kanootoko/population_restorator.git"
+"Bug Tracker" = "https://github.com/kanootoko/population_restorator/issues"
+
+[tool.poetry.scripts]
+balance-db = "idu_balance_db.__main__:balance_db"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+click = "^8.1.6"
+geoalchemy2 = "^0.14.1"
+loguru = "^0.7.0"
+pandas = "^2.0.3"
+psycopg2 = "^2.9.6"
+sqlalchemy = "^2.0.20"
+population-restorator = {git = "https://github.com/kanootoko/population-restorator"}
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+pylint = "^2.17.4"
+pre-commit = "^3.3.3"
+isort = "^5.12.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.black]
+line-length = 120
+target-version = ['py39']
+
+[tool.pylint.format]
+max-line-length = 120
+disable = ["duplicate-code"]
+expected-line-ending-format = "LF"
+
+[tool.isort]
+force_grid_wrap = 0
+lines_after_imports = 2
+multi_line_output = 3
+line_length = 120
+use_parentheses = true
+ensure_newline_before_comments = true
+include_trailing_comma = true
+split_on_trailing_comma = true
+py_version = 39
