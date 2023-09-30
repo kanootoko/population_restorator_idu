@@ -38,6 +38,7 @@ def save_year_to_database(  # pylint: disable=too-many-locals
             (t_sex_age_social_houses.c.house_id.in_(houses_ids) if houses_ids is not None else true()),
         )
     )
+    logger.info("Saving data from temporary database to PostgreSQL for year {}", year)
     for house_id in tqdm(
         year_conn.execute(select(distinct(t_population_divided.c.house_id)).order_by(t_population_divided.c.house_id))
         .scalars()
@@ -68,7 +69,7 @@ def save_year_to_database(  # pylint: disable=too-many-locals
                 insert(t_sex_age_social_houses).values(
                     year=year,
                     scenario=scenario,
-                    house_id=house_id,
+                    building_id=house_id,
                     social_group_id=social_group_id,
                     **house_population,
                 )

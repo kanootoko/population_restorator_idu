@@ -3,6 +3,7 @@ from sqlalchemy import Column, Float, ForeignKey, Table
 
 from idu_balance_db.db import metadata
 
+
 t_sex_distribution = Table(
     "sex_distribution",
     metadata,

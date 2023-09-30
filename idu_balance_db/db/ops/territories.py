@@ -20,7 +20,7 @@ def syncronize_administrative_unit_population(conn: Connection, administrative_u
         conn.execute(
             update(t_administrative_units)
             .where(t_administrative_units.c.id == administrative_unit_id)
-            .set(population=population)
+            .values(population=population)
         )
 
 

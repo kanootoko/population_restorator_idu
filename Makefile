@@ -1,4 +1,4 @@
-CODE := population_restorator
+CODE := idu_balance_db
 
 lint:
 	poetry run pylint $(CODE)

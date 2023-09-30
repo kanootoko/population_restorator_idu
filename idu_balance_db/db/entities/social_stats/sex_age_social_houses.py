@@ -1,10 +1,9 @@
 """Sex-age-social_groups-houses people distribution table definition is defined here."""
 from typing import Callable
 
-from sqlalchemy import Column, Enum, ForeignKey, Index, Integer, Sequence, SmallInteger, Table
+from sqlalchemy import Column, Enum, ForeignKey, Index, Sequence, SmallInteger, Table
 
 from idu_balance_db.db import metadata
-
 from idu_balance_db.db.entities.enums import ForecastScenario
 
 

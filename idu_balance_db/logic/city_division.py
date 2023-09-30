@@ -53,7 +53,7 @@ def _get_city_as_territory_mos(conn: Connection, city_id: int) -> Territory:
         aus = []
         for au_id, mo_population in conn.execute(
             select(t_administrative_units.c.id, t_administrative_units.c.population).where(
-                t_administrative_units.c.municipality_parent == mo_id
+                t_administrative_units.c.municipality_parent_id == mo_id
             )
         ).fetchall():
             buildings = get_buildings_administrative_unit(conn, au_id)

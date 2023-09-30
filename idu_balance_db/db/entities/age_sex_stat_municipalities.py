@@ -1,5 +1,5 @@
 """age-sex-stat-municipalities table schema is defined here."""
-from sqlalchemy import Column, ForeignKey, Integer, Table, SmallInteger
+from sqlalchemy import Column, ForeignKey, Integer, SmallInteger, Table
 
 from idu_balance_db.db import metadata
 

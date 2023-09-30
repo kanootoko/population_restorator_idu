@@ -64,5 +64,6 @@ Columns:
 - `population` - total population, integer
 - `created_at` - time of insertion, DateTimeTz
 - `updated_at` - time of last edit, DateTimeTz
-- `municipality_parent_id` - identifier of municipality as a parent (available if city division type is MUNICIPALITY_PARENT), int nullable
+- `municipality_parent_id` - identifier of municipality as a parent
+(available if city division type is MUNICIPALITY_PARENT), int nullable
 """

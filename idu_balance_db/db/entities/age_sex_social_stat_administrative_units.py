@@ -1,7 +1,8 @@
 """age-sex-social-stat-administrative_units table schema is defined here."""
-from sqlalchemy import Column, ForeignKey, Integer, Table, SmallInteger
+from sqlalchemy import Column, ForeignKey, Integer, SmallInteger, Table
 
 from idu_balance_db.db import metadata
+
 
 t_age_sex_social_stat_administrative_units = Table(
     "age_sex_social_stat_administrative_units",

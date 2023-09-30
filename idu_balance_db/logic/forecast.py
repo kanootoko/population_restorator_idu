@@ -8,6 +8,7 @@ from population_restorator.models import SurvivabilityCoefficients
 from sqlalchemy import create_engine, text
 
 from idu_balance_db.db.entities.enums import ForecastScenario
+from idu_balance_db.utils.tmp_db import clear_tmp_db
 
 from .saving import save_year_to_database
 
@@ -34,8 +35,10 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
     year_db_dsn_template: str,
     base_survivability_coefficients: SurvivabilityCoefficients,
     year_begin: int,
+    skip_clear_tmp_db: bool = True,
     houses_ids: list[int] = None,
     years: int = 10,
+    scenarios: list[ForecastScenario] = ...,
     base_fertility: float = 0.07,
     negative_scenario_multiplier: float = 0.95,
     positive_scenario_multiplier: float = 1.05,
@@ -44,18 +47,19 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
     """Forecast people with a given base `survivability_coefficients` to multiply by `negative_scenario_multiplier` or
     `positive_scenario_multiplier` and save to `conn` PosgreSQL database connection.
     """
+    if scenarios is ...:
+        scenarios = list(ForecastScenario)
 
     boys_to_girls = 1.05
     fertility_begin = 20
     fertility_end = 39
 
-    saving_queue = mp.Queue()
-    saving_process = mp.Process(target=db_saver_process, args=(main_db_dsn, saving_queue))
-    saving_process.start()
-
     try:
-        scenarios = [ForecastScenario.mod]
         for scenario in scenarios:
+            saving_queue = mp.Queue()
+            saving_process = mp.Process(target=db_saver_process, args=(main_db_dsn, saving_queue))
+            saving_process.start()
+
             saving_queue.put_nowait((start_db_dsn, year_begin, scenario, houses_ids))
             multiplier = (
                 negative_scenario_multiplier
@@ -70,7 +74,9 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
                 (np.array(base_survivability_coefficients.women) * multiplier).tolist(),
             )
 
-            def save_results(year_dsn: str, year: int, scenario: ForecastScenario = scenario) -> None:
+            def save_results(
+                year_dsn: str, year: int, scenario: ForecastScenario = scenario, saving_queue: mp.Queue = saving_queue
+            ) -> None:
                 """Save results from the temporary year database to PostgreSQL main DB."""
                 saving_queue.put_nowait((year_dsn, year, scenario, houses_ids))
 
@@ -90,6 +96,12 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
             databases = [
                 year_db_dsn_template.format(year=year) for year in range(year_begin + 1, year_begin + years + 1)
             ]
+
+            if not skip_clear_tmp_db:
+                for dsn in databases:
+                    tmp_engine = create_engine(dsn)
+                    with tmp_engine.connect() as tmp_conn:
+                        clear_tmp_db(tmp_conn, year_begin)
 
             logger.success("Starting forecast for scenario '{}'", scenario)
             start_year_db = create_engine(start_db_dsn)
