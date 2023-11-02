@@ -173,7 +173,7 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
         year_begin = datetime.datetime.now().year
 
     if "?" not in dsn:
-        dsn += f"?application_name=idu_balance_db v{__version__}"
+        dsn += f"?application_name=idu_balance_db_v{__version__}"
 
     try:
         if not skip_clear_tmp_db:
@@ -201,37 +201,37 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
 
             houses_df = balance_houses_from_territory(conn, city_territory).set_index("id")
 
+            conn.commit()
+
             sgs_distribution = get_social_groups_distribution_from_db_and_excel(conn, str(distribution_file))
 
-            distribution_series = pd.Series(
-                divide_houses(houses_df["population"].astype(int).to_list(), sgs_distribution),
-                index=houses_df.index,
-            )
-            logger.info(f"Totally {houses_df.shape[0]} houses")
+        distribution_series = pd.Series(
+            divide_houses(houses_df["population"].astype(int).to_list(), sgs_distribution),
+            index=houses_df.index,
+        )
+        logger.info(f"Totally {houses_df.shape[0]} houses")
 
-            save_houses_distribution_to_db(
-                first_year_tmp_db.connect(),
-                distribution_series,
-                houses_df["living_area"] if "living_area" in houses_df.columns else houses_df["population"],
-                sgs_distribution,
-                year_begin,
-                verbose,
-            )
+        save_houses_distribution_to_db(
+            first_year_tmp_db.connect(),
+            distribution_series,
+            houses_df["living_area"] if "living_area" in houses_df.columns else houses_df["population"],
+            sgs_distribution,
+            year_begin,
+            verbose,
+        )
 
-            survivability_coefficients = read_coefficients(str(survivability_coefficients_file))
-            forecast_people_scenarios_saving_to_db(
-                dsn,
-                first_year_tmp_db_dsn,
-                temporary_dsn_template,
-                survivability_coefficients,
-                year_begin,
-                years=years,
-                skip_clear_tmp_db=skip_clear_tmp_db,
-                threads=threads,
-                scenarios=scenarios,
-            )
-
-            conn.commit()
+        survivability_coefficients = read_coefficients(str(survivability_coefficients_file))
+        forecast_people_scenarios_saving_to_db(
+            dsn,
+            first_year_tmp_db_dsn,
+            temporary_dsn_template,
+            survivability_coefficients,
+            year_begin,
+            years=years,
+            skip_clear_tmp_db=skip_clear_tmp_db,
+            threads=threads,
+            scenarios=scenarios,
+        )
 
     except IduBalanceDbError as exc:
         logger.error(f"Application error: {exc}")

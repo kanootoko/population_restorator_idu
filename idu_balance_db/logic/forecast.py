@@ -116,11 +116,12 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
             )
             logger.success("Finished forecast for scenario '{}'", scenario)
 
-        saving_queue.put(None)
-        logger.success("Waiting for the saving process to be finished")
-        saving_process.join()
+            saving_queue.put(None)
+            logger.success("Waiting for the saving process to be finished")
+            saving_process.join()
     finally:
         if saving_process.is_alive():
+            logger.info("Waiting untill saving process is properly killed")
             saving_process.kill()
             saving_process.join()
 
