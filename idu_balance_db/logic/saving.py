@@ -1,7 +1,7 @@
 """Functionality of saving data to main DB is defined here."""
 from loguru import logger
 from population_restorator.db.entities import t_population_divided, t_social_groups_probabilities
-from sqlalchemy import Connection, delete, distinct, select, true
+from sqlalchemy import Connection, delete, distinct, select
 from sqlalchemy.dialects.postgresql import insert
 from tqdm import tqdm
 
@@ -10,13 +10,19 @@ from idu_balance_db.db.entities.social_stats import t_sex_age_social_houses
 
 
 def save_year_to_database(  # pylint: disable=too-many-locals
-    conn: Connection, year_conn: Connection, year: int, scenario: ForecastScenario, houses_ids: list[int] | None
+    conn: Connection,
+    year_conn: Connection,
+    year: int,
+    scenario: ForecastScenario,
+    houses_ids: list[int],
+    db_max_age: int = 100,
 ) -> None:
     """Migrate year data from temporary database `year_db` with a data for a single year to a
     `t_sex_age_social_houses` table at `conn` PostgreSQL database connection.
+
+    It deletes buildings with id in `houses_ids` and inserts data from year_conn.
     """
-    logger.info("Inserting year {} forecasted data to the database", year)
-    base_population = {f"men_{i}": 0 for i in range(101)} | {f"women_{i}": 0 for i in range(101)}
+    base_population = {f"men_{i}": 0 for i in range(db_max_age + 1)} | {f"women_{i}": 0 for i in range(db_max_age + 1)}
     social_groups = [
         (sg_id, int(sg_name))
         for sg_id, sg_name in year_conn.execute(
@@ -35,7 +41,7 @@ def save_year_to_database(  # pylint: disable=too-many-locals
         delete(t_sex_age_social_houses).where(
             t_sex_age_social_houses.c.scenario == scenario,
             t_sex_age_social_houses.c.year == year,
-            (t_sex_age_social_houses.c.house_id.in_(houses_ids) if houses_ids is not None else true()),
+            t_sex_age_social_houses.c.building_id.in_(houses_ids),
         )
     )
     logger.info("Saving data from temporary database to PostgreSQL for year {}", year)
@@ -56,6 +62,7 @@ def save_year_to_database(  # pylint: disable=too-many-locals
                     t_population_divided.c.house_id == house_id,
                     t_population_divided.c.social_group_id == tmp_sg_id,
                     (t_population_divided.c.men > 0) | (t_population_divided.c.women > 0),
+                    (t_population_divided.c.age <= db_max_age),
                 )
             ).all()
             if len(house_people) == 0:

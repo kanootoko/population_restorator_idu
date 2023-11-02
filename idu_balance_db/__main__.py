@@ -1,7 +1,9 @@
 """Executable file of idu-balance-db."""
 import datetime
 import itertools
+import os
 import sys
+import time
 import traceback
 from pathlib import Path
 from typing import Literal
@@ -11,6 +13,7 @@ import pandas as pd
 from loguru import logger
 from population_restorator.divider import divide_houses, save_houses_distribution_to_db
 from population_restorator.models.parse import read_coefficients
+from rich import print as rich_print
 from sqlalchemy import create_engine, select, text
 
 from idu_balance_db import __version__
@@ -19,7 +22,8 @@ from idu_balance_db.db.ops.cities import get_city_id
 from idu_balance_db.exceptions.base import IduBalanceDbError
 from idu_balance_db.logic.balancing import balance_houses_from_territory
 from idu_balance_db.logic.city_division import get_city_as_territory
-from idu_balance_db.logic.forecast import forecast_people_scenarios_saving_to_db
+from idu_balance_db.logic.demands_update import update_demands_table
+from idu_balance_db.logic.forecast import forecast_people_scenarios_with_transfering_to_db
 from idu_balance_db.logic.social import get_social_groups_distribution_from_db_and_excel
 from idu_balance_db.utils.dotenv import try_read_envfile
 from idu_balance_db.utils.tmp_db import fully_clear_tmp_db
@@ -166,6 +170,21 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
     for log_level, filename in additional_loggers:
         logger.add(filename, level=log_level)
 
+    if "SKIP_WARNING" not in os.environ:  # mostly for debug, so it's not a CLI option
+        logger.opt(colors=True).warning(
+            "If forecasting already was performed and years range is different, please remove them by launching"
+            " <cyan>WITH city_buildings AS (SELECT b.id FROM buildings b JOIN physical_objects p"
+            " ON b.physical_object_id = p.id JOIN cities c ON p.city_id = c.id WHERE c.name = <b>CITY_NAME_HERE</b>)"
+            " DELETE FROM social_stats.sex_age_social_houses WHERE building_id IN (SELECT id FROM city_buildings)"
+            "</cyan>"
+        )
+        logger.opt(colors=True).info("Starting in 10 seconds <dim>(to skip this, set SKIP_WARNING=1)</dim>")
+        try:
+            time.sleep(10)
+        except KeyboardInterrupt:
+            logger.info("Exiting by Ctrl+C hit")
+            return
+
     forecast_scenarios = [ForecastScenario(sc) for sc in set(scenarios)]
     logger.info("Forecasting population for scenarios: {}", ", ".join(sc.value for sc in forecast_scenarios))
 
@@ -173,7 +192,7 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
         year_begin = datetime.datetime.now().year
 
     if "?" not in dsn:
-        dsn += f"?application_name=idu_balance_db v{__version__}"
+        dsn += f"?application_name=idu_balance_db_v{__version__}"
 
     try:
         if not skip_clear_tmp_db:
@@ -191,47 +210,60 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
         with engine.connect() as conn:
             city_id = get_city_id(conn, city)
             city_territory = get_city_as_territory(conn, city_id)
+            houses_ids: list[int] = city_territory.get_all_houses()["id"].unique().tolist()
 
             logger.info("City as territory: {}", city_territory)
             if verbose >= 2:
-                from rich import print as rich_print  # pylint: disable=import-outside-toplevel
-
                 rich_print("[i]City model information before balancing:[/i]")
                 rich_print(city_territory.deep_info())
 
             houses_df = balance_houses_from_territory(conn, city_territory).set_index("id")
 
-            sgs_distribution = get_social_groups_distribution_from_db_and_excel(conn, str(distribution_file))
-
-            distribution_series = pd.Series(
-                divide_houses(houses_df["population"].astype(int).to_list(), sgs_distribution),
-                index=houses_df.index,
-            )
-            logger.info(f"Totally {houses_df.shape[0]} houses")
-
-            save_houses_distribution_to_db(
-                first_year_tmp_db.connect(),
-                distribution_series,
-                houses_df["living_area"] if "living_area" in houses_df.columns else houses_df["population"],
-                sgs_distribution,
-                year_begin,
-                verbose,
-            )
-
-            survivability_coefficients = read_coefficients(str(survivability_coefficients_file))
-            forecast_people_scenarios_saving_to_db(
-                dsn,
-                first_year_tmp_db_dsn,
-                temporary_dsn_template,
-                survivability_coefficients,
-                year_begin,
-                years=years,
-                skip_clear_tmp_db=skip_clear_tmp_db,
-                threads=threads,
-                scenarios=scenarios,
-            )
-
             conn.commit()
+
+            sgs_distribution = get_social_groups_distribution_from_db_and_excel(conn, str(distribution_file))
+            # print(sgs_distribution.primary)
+            # print(sgs_distribution.additional)
+            # print()
+
+        logger.info(
+            "Finished balancing (totally {} houses), dividing to age, sex and social groups now", houses_df.shape[0]
+        )
+        distribution_series = pd.Series(
+            divide_houses(houses_df["population"].astype(int).to_list(), sgs_distribution),
+            index=houses_df.index,
+        )
+        logger.info("Finished balancing, saving starting year results")
+
+        save_houses_distribution_to_db(
+            first_year_tmp_db.connect(),
+            distribution_series,
+            houses_df["living_area"] if "living_area" in houses_df.columns else houses_df["population"],
+            sgs_distribution,
+            year_begin,
+            verbose,
+        )
+
+        if years > 0:
+            survivability_coefficients = read_coefficients(str(survivability_coefficients_file))
+            logger.info("Forecasting people from year {} to {}", year_begin + 1, year_begin + years)
+        else:
+            survivability_coefficients = None
+
+        forecast_people_scenarios_with_transfering_to_db(
+            dsn,
+            first_year_tmp_db_dsn,
+            temporary_dsn_template,
+            survivability_coefficients,
+            year_begin,
+            years=years,
+            skip_clear_tmp_db=skip_clear_tmp_db,
+            threads=threads,
+            scenarios=forecast_scenarios,
+            houses_ids=houses_ids,
+        )
+
+        update_demands_table(engine, city_id, year_begin, years)
 
     except IduBalanceDbError as exc:
         logger.error(f"Application error: {exc}")
