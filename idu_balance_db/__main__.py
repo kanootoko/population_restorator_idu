@@ -2,6 +2,7 @@
 import datetime
 import itertools
 import sys
+import time
 import traceback
 from pathlib import Path
 from typing import Literal
@@ -166,6 +167,19 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
     for log_level, filename in additional_loggers:
         logger.add(filename, level=log_level)
 
+    logger.opt(colors=True).warning(
+        "If forecasting already was performed and years range is different, please remove them by launching"
+        "<cyan>WITH city_buildings AS (SELECT b.id FROM buildings b JOIN physical_objects p"
+        " ON b.physical_object_id = p.id JOIN cities c ON p.city_id = c.id WHERE c.name = <b>CITY_NAME_HERE</b>)"
+        " DELETE FROM social_stats.sex_age_social_houses WHERE building_id IN (SELECT id FROM city_buildings)</cyan>"
+    )
+    logger.info("Starting in 10 seconds")
+    try:
+        time.sleep(10)
+    except KeyboardInterrupt:
+        logger.info("Exiting by Ctrl+C hit")
+        return
+
     forecast_scenarios = [ForecastScenario(sc) for sc in set(scenarios)]
     logger.info("Forecasting population for scenarios: {}", ", ".join(sc.value for sc in forecast_scenarios))
 
@@ -191,6 +205,7 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
         with engine.connect() as conn:
             city_id = get_city_id(conn, city)
             city_territory = get_city_as_territory(conn, city_id)
+            houses_ids: list[int] = city_territory.get_all_houses()["id"].unique().tolist()
 
             logger.info("City as territory: {}", city_territory)
             if verbose >= 2:
@@ -231,6 +246,7 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
             skip_clear_tmp_db=skip_clear_tmp_db,
             threads=threads,
             scenarios=scenarios,
+            houses_ids=houses_ids,
         )
 
     except IduBalanceDbError as exc:

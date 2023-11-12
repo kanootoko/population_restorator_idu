@@ -1,6 +1,7 @@
 """Additional script to save missing years if the calculations have been finished, but saving process was aborted."""
 import click
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
+from population_restorator.db.entities import t_houses_tmp
 
 from idu_balance_db import __version__
 from idu_balance_db.db.entities.enums import ForecastScenario
@@ -35,7 +36,8 @@ def main(dsn: str, year_dsn: str, year: int, scenario: ForecastScenario):
     year_engine = create_engine(year_dsn)
     main_db_engine = create_engine(dsn)
     with main_db_engine.connect() as main_db_conn, year_engine.connect() as year_conn:
-        save_year_to_database(main_db_conn, year_conn, year, scenario, None)
+        houses_ids: list[int] = list(year_conn.execute(select(t_houses_tmp.c.id.distinct())).scalars().all())
+        save_year_to_database(main_db_conn, year_conn, year, scenario, houses_ids)
         main_db_conn.commit()
 
 

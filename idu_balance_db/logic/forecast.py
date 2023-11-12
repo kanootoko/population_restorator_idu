@@ -35,8 +35,8 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
     year_db_dsn_template: str,
     base_survivability_coefficients: SurvivabilityCoefficients,
     year_begin: int,
-    skip_clear_tmp_db: bool = True,
-    houses_ids: list[int] = None,
+    houses_ids: list[int],
+    skip_clear_tmp_db: bool = False,
     years: int = 10,
     scenarios: list[ForecastScenario] = ...,
     base_fertility: float = 0.07,
@@ -102,6 +102,7 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
                     tmp_engine = create_engine(dsn)
                     with tmp_engine.connect() as tmp_conn:
                         clear_tmp_db(tmp_conn, year_begin)
+                        tmp_conn.commit()
 
             logger.success("Starting forecast for scenario '{}'", scenario)
             start_year_db = create_engine(start_db_dsn)
@@ -125,13 +126,19 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
             saving_process.kill()
             saving_process.join()
 
-    logger.info("Refreshing materialized views")
+    logger.info("Refreshing materialized views:")
     main_db_engine = create_engine(main_db_dsn)
+    social_matviews = [
+        "calculated_sex_age_houses",
+        "calculated_people_houses",
+        "calculated_sex_age_social_administrative_units",
+        "calculated_sex_age_social_municipalities",
+        "calculated_sex_age_administrative_units",
+        "calculated_sex_age_municipalities",
+    ]
     with main_db_engine.connect() as conn:
-        # conn.execute(text("select refresh_social_materialized_views()"))
-        conn.execute(text("refresh materialized view social_stats.calculated_sex_age_houses"))
-        conn.execute(text("refresh materialized view social_stats.calculated_sex_age_social_administrative_units"))
-        conn.execute(text("refresh materialized view social_stats.calculated_sex_age_social_municipalities"))
-        conn.execute(text("refresh materialized view social_stats.calculated_sex_age_administrative_units"))
-        conn.execute(text("refresh materialized view social_stats.calculated_sex_age_municipalities"))
+        for matview_name in social_matviews:
+            logger.info(" - social_stats.{}", matview_name)
+            conn.execute(text(f"refresh materialized view social_stats.{matview_name}"))
         conn.commit()
+    logger.info("Done refreshing materialized views.")
