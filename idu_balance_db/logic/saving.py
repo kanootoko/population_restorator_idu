@@ -37,7 +37,7 @@ def save_year_to_database(  # pylint: disable=too-many-locals
         delete(t_sex_age_social_houses).where(
             t_sex_age_social_houses.c.scenario == scenario,
             t_sex_age_social_houses.c.year == year,
-            t_sex_age_social_houses.c.house_id.in_(houses_ids),
+            t_sex_age_social_houses.c.building_id.in_(houses_ids),
         )
     )
     logger.info("Saving data from temporary database to PostgreSQL for year {}", year)
