@@ -9,7 +9,7 @@ from sqlalchemy import Connection, delete
 from sqlalchemy.schema import DropTable
 
 
-def clear_tmp_db(conn: Connection, start_year: int) -> None:
+def clear_tmp_db_except_start(conn: Connection, start_year: int) -> None:
     """Clear `population_divided` table of all entries except `start_year` year."""
     conn.execute(delete(t_population_divided).where(t_population_divided.c.year != start_year))
     conn.commit()

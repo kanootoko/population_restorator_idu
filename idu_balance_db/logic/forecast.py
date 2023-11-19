@@ -8,7 +8,7 @@ from population_restorator.models import SurvivabilityCoefficients
 from sqlalchemy import create_engine, text
 
 from idu_balance_db.db.entities.enums import ForecastScenario
-from idu_balance_db.utils.tmp_db import clear_tmp_db
+from idu_balance_db.utils.tmp_db import clear_tmp_db_except_start
 
 from .saving import save_year_to_database
 
@@ -81,6 +81,18 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
                 saving_queue.put_nowait((year_dsn, year, scenario, houses_ids))
 
             start_year_engine = create_engine(start_db_dsn)
+
+            databases = [
+                year_db_dsn_template.format(year=year) for year in range(year_begin + 1, year_begin + years + 1)
+            ]
+
+            if not skip_clear_tmp_db:
+                for dsn in databases:
+                    tmp_engine = create_engine(dsn)
+                    with tmp_engine.connect() as tmp_conn:
+                        clear_tmp_db_except_start(tmp_conn, year_begin)
+                        tmp_conn.commit()
+
             forecasted_ages = forecast_ages(
                 start_year_engine,
                 year_begin,
@@ -92,17 +104,6 @@ def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-argument
                 fertility_end,
                 houses_ids=houses_ids,
             )
-
-            databases = [
-                year_db_dsn_template.format(year=year) for year in range(year_begin + 1, year_begin + years + 1)
-            ]
-
-            if not skip_clear_tmp_db:
-                for dsn in databases:
-                    tmp_engine = create_engine(dsn)
-                    with tmp_engine.connect() as tmp_conn:
-                        clear_tmp_db(tmp_conn, year_begin)
-                        tmp_conn.commit()
 
             logger.success("Starting forecast for scenario '{}'", scenario)
             start_year_db = create_engine(start_db_dsn)
