@@ -20,6 +20,7 @@ from idu_balance_db.db.ops.cities import get_city_id
 from idu_balance_db.exceptions.base import IduBalanceDbError
 from idu_balance_db.logic.balancing import balance_houses_from_territory
 from idu_balance_db.logic.city_division import get_city_as_territory
+from idu_balance_db.logic.demands_update import update_demands_table
 from idu_balance_db.logic.forecast import forecast_people_scenarios_saving_to_db
 from idu_balance_db.logic.social import get_social_groups_distribution_from_db_and_excel
 from idu_balance_db.utils.dotenv import try_read_envfile
@@ -169,7 +170,7 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
 
     logger.opt(colors=True).warning(
         "If forecasting already was performed and years range is different, please remove them by launching"
-        "<cyan>WITH city_buildings AS (SELECT b.id FROM buildings b JOIN physical_objects p"
+        " <cyan>WITH city_buildings AS (SELECT b.id FROM buildings b JOIN physical_objects p"
         " ON b.physical_object_id = p.id JOIN cities c ON p.city_id = c.id WHERE c.name = <b>CITY_NAME_HERE</b>)"
         " DELETE FROM social_stats.sex_age_social_houses WHERE building_id IN (SELECT id FROM city_buildings)</cyan>"
     )
@@ -248,6 +249,8 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
             scenarios=scenarios,
             houses_ids=houses_ids,
         )
+
+        update_demands_table(engine, city_id, year_begin, years)
 
     except IduBalanceDbError as exc:
         logger.error(f"Application error: {exc}")
