@@ -1,13 +1,18 @@
 """Services demands update logic is defined here."""
-from loguru import logger
 import pandas as pd
-from numpy import nan
+from loguru import logger
+from numpy import nan, isnan
 from sqlalchemy import Engine, text
 from tqdm import tqdm, trange
 
+from idu_balance_db.db.entities.enums import ForecastScenario
 
-def update_demands_table(engine: Engine, city_id: int, start_year: int, years: int, scenario: str = "mod") -> None:
+
+def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    engine: Engine, city_id: int, start_year: int, years: int, scenario: ForecastScenario = ForecastScenario.mod
+) -> None:
     """Update services-buildings demands table for the given city."""
+    scenario_name = scenario.value
     with engine.connect() as conn:
         conn.execute(
             text(
@@ -71,7 +76,7 @@ def update_demands_table(engine: Engine, city_id: int, start_year: int, years: i
                         " GROUP BY building_id"
                         " ORDER BY building_id"
                     ),
-                    ({"city_id": city_id, "year": year, "scenario": scenario}),
+                    ({"city_id": city_id, "year": year, "scenario": scenario_name}),
                 ).all()
                 if len(res) == 0:
                     logger.error(
@@ -93,7 +98,7 @@ def update_demands_table(engine: Engine, city_id: int, start_year: int, years: i
                         "   AND house_id in (SELECT id FROM city_buildings)"
                         " ORDER BY house_id"
                     ),
-                    ({"city_id": city_id, "year": year, "scenario": scenario}),
+                    ({"city_id": city_id, "year": year, "scenario": scenario_name}),
                 ).all()
                 if len(res) == 0:
                     logger.error(
@@ -116,10 +121,10 @@ def update_demands_table(engine: Engine, city_id: int, start_year: int, years: i
             for (
                 city_service_type_id,
                 service_type,
-            ) in tqdm(service_types, desc="model"):
+            ) in tqdm(service_types, desc=f"model@{year}", leave=False):
                 if f"{service_type}_service_demand_value_model" in houses_year.columns:
                     continue
-                social_groups = (
+                social_groups = tuple(
                     conn.execute(
                         text(
                             "SELECT social_group_id FROM maintenance.social_groups_city_service_types"
@@ -134,29 +139,29 @@ def update_demands_table(engine: Engine, city_id: int, start_year: int, years: i
                     text(
                         f" SELECT building_id, sum({men_column} + {women_column})::integer"
                         " FROM social_stats.sex_age_social_houses"
-                        " WHERE year = :year AND scenario = %s"
-                        "   AND social_group_id IN %s AND building_id in (SELECT id FROM city_buildings)"
+                        " WHERE year = :year AND scenario = :scenario"
+                        "   AND social_group_id IN :social_groups AND building_id in (SELECT id FROM city_buildings)"
                         " GROUP BY building_id ORDER BY building_id"
                     ),
-                    {"year": year, "scenario": scenario, "social_groups": social_groups},
+                    {"year": year, "scenario": scenario_name, "social_groups": social_groups},
                 ).all()
                 idxs, values = map(list, zip(*res))
                 houses_year = houses_year.join(
                     pd.Series(values, index=idxs, name=f"{service_type}_service_demand_value_model"), how="left"
                 )
 
-            for service_type in tqdm(services_normatives, desc="normative", leave=False):
+            for service_type in tqdm(services_normatives, desc=f"normative@{year}", leave=False):
                 if f"{service_type}_service_demand_value_normative" in houses_year.columns:
                     continue
                 houses_year[f"{service_type}_service_demand_value_normative"] = (
                     houses_year["year_population"] * services_normatives[service_type]
-                ).apply(lambda x: round(x) if x == x else nan)
+                ).apply(lambda x: round(x) if not isnan(x) else nan)
             city_df = pd.concat((city_df, houses_year.reset_index())).reset_index(drop=True)
 
         columns = city_df.columns.tolist()
         query = text(
             f"INSERT INTO provision.buildings_load_future ({', '.join(columns)})"
-            f" VALUES ({', '.join(column for column in columns)}) ON CONFLICT DO NOTHING"
+            f" VALUES ({', '.join(':' + column for column in columns)}) ON CONFLICT DO NOTHING"
         )
         creation_text = text(
             "CREATE TABLE IF NOT EXISTS provision.buildings_load_future ("
@@ -169,13 +174,14 @@ def update_demands_table(engine: Engine, city_id: int, start_year: int, years: i
             + ")"
         )
         conn.execute(creation_text)
-        row = dict(conn.execute(text("SELECT * FROM provision.buildings_load_future LIMIT 1")).mappings().one_or_none())
+        row = conn.execute(text("SELECT * FROM provision.buildings_load_future LIMIT 1")).mappings().one_or_none()
         if row is None:
             conn.execute(text("DROP TABLE provision.buildings_load_future"))
             conn.execute(creation_text)
         else:
-            additional_columns = set(columns) - set(row.keys())
-            to_remove = set(row.keys()) - set(columns)
+            row_dict = dict(row)
+            additional_columns = set(columns) - set(row_dict.keys())
+            to_remove = set(row_dict.keys()) - set(columns)
             for column in additional_columns:
                 logger.warning("Adding column '{}' to provision.buildings_load_future", column)
                 conn.execute(text(f"ALTER TABLE provision.buildings_load_future ADD COLUMN {column} smallint"))
@@ -186,9 +192,9 @@ def update_demands_table(engine: Engine, city_id: int, start_year: int, years: i
                 "DELETE FROM provision.buildings_load_future WHERE building_id IN (SELECT id FROM city_buildings)"
             )
 
-        for _, (building_id, year, year_population_sgs, year_population, *row) in tqdm(
-            city_df.fillna(0).iterrows(), total=city_df.shape[0]
-        ):
+        for _, row in tqdm(city_df.fillna(0).iterrows(), total=city_df.shape[0], desc="uploading"):
             conn.execute(
-                query, (building_id, year, year_population_sgs, year_population, *(min(value, 32767) for value in row))
+                query,
+                dict(row.to_dict()),
             )
+        conn.commit()

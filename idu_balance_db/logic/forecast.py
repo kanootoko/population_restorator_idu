@@ -1,5 +1,6 @@
 """Forecasting-related methods are located here."""
 import multiprocessing as mp
+import time
 
 import numpy as np
 from loguru import logger
@@ -24,9 +25,15 @@ def db_saver_process(main_db_dsn: str, queue: mp.Queue) -> None:
         year_dsn, year, scenario, houses_ids = value
         year_engine = create_engine(year_dsn)
         main_db_engine = create_engine(main_db_dsn)
-        with main_db_engine.connect() as main_db_conn, year_engine.connect() as year_conn:
-            save_year_to_database(main_db_conn, year_conn, year, scenario, houses_ids)
-            main_db_conn.commit()
+        while True:
+            try:
+                with main_db_engine.connect() as main_db_conn, year_engine.connect() as year_conn:
+                    save_year_to_database(main_db_conn, year_conn, year, scenario, houses_ids)
+                    main_db_conn.commit()
+                break
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error("Got exception on saving data: {!r} of year {}. Trying again in 20 seconds", exc, year)
+                time.sleep(20)
 
 
 def forecast_people_scenarios_saving_to_db(  # pylint: disable=too-many-arguments,too-many-locals
