@@ -2,7 +2,7 @@
 from enum import Enum
 
 
-class CityDivisionType(Enum, str):
+class CityDivisionType(Enum):
     """Type of city administrative division."""
 
     ADMIN_UNIT_PARENT = "ADMIN_UNIT_PARENT"
@@ -10,7 +10,7 @@ class CityDivisionType(Enum, str):
     NO_PARENT = "NO_PARENT"
 
 
-class ForecastScenario(Enum, str):
+class ForecastScenario(Enum):
     """Forecast scenario."""
 
     neg = "neg"  # pylint: disable=invalid-name

@@ -1,7 +1,7 @@
 """Services demands update logic is defined here."""
 import pandas as pd
 from loguru import logger
-from numpy import nan, isnan
+from numpy import isnan, nan
 from sqlalchemy import Engine, text
 from tqdm import tqdm, trange
 
@@ -174,23 +174,28 @@ def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,t
             + ")"
         )
         conn.execute(creation_text)
-        row = conn.execute(text("SELECT * FROM provision.buildings_load_future LIMIT 1")).mappings().one_or_none()
-        if row is None:
-            conn.execute(text("DROP TABLE provision.buildings_load_future"))
-            conn.execute(creation_text)
-        else:
-            row_dict = dict(row)
-            additional_columns = set(columns) - set(row_dict.keys())
-            to_remove = set(row_dict.keys()) - set(columns)
-            for column in additional_columns:
-                logger.warning("Adding column '{}' to provision.buildings_load_future", column)
-                conn.execute(text(f"ALTER TABLE provision.buildings_load_future ADD COLUMN {column} smallint"))
-            for column in to_remove:
-                logger.warning("Removing column '{}' from provision.buildings_load_future", column)
-                conn.execute(text(f"ALTER TABLE provision.buildings_load_future DROP COLUMN {column}"))
+        table_columns = (
             conn.execute(
-                "DELETE FROM provision.buildings_load_future WHERE building_id IN (SELECT id FROM city_buildings)"
+                text(
+                    "SELECT column_name"
+                    " FROM information_schema.columns"
+                    " WHERE table_schema = 'provision' AND table_name = 'buildings_load_future'"
+                )
             )
+            .scalars()
+            .all()
+        )
+        additional_columns = set(columns) - set(table_columns)
+        to_remove = set(table_columns) - set(columns)
+        for column in additional_columns:
+            logger.warning("Adding column '{}' to provision.buildings_load_future", column)
+            conn.execute(text(f"ALTER TABLE provision.buildings_load_future ADD COLUMN {column} smallint"))
+        for column in to_remove:
+            logger.warning("Removing column '{}' from provision.buildings_load_future", column)
+            conn.execute(text(f"ALTER TABLE provision.buildings_load_future DROP COLUMN {column}"))
+        conn.execute(
+            text("DELETE FROM provision.buildings_load_future WHERE building_id IN (SELECT id FROM city_buildings)")
+        )
 
         for _, row in tqdm(city_df.fillna(0).iterrows(), total=city_df.shape[0], desc="uploading"):
             conn.execute(
