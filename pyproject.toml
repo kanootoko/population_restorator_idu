@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "idu-balance-db"
-version = "0.2.0"
+version = "0.2.1"
 description = "IDU Lab utility to balance cities population"
 authors = ["Aleksei Sokol <kanootoko@gmail.com>"]
 license = "MIT"
@@ -32,6 +32,7 @@ pandas = "^2.0.3"
 psycopg2 = "^2.9.6"
 sqlalchemy = "^2.0.20"
 population-restorator = {git = "https://github.com/kanootoko/population-restorator"}
+# population-restorator = {path = "../population_restorator", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"

@@ -53,6 +53,8 @@ def balance_houses_from_territory(conn: Connection, city_territory: Territory) -
 
     houses_df = city_territory.get_all_houses()
 
+    logger.info("Updating buildings population_balanced")
+
     for house_id, population in houses_df[["id", "population"]].set_index("id")["population"].items():
         update_house_population(conn, int(house_id), int(population))
 
