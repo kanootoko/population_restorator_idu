@@ -222,9 +222,6 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
             conn.commit()
 
             sgs_distribution = get_social_groups_distribution_from_db_and_excel(conn, str(distribution_file))
-            # print(sgs_distribution.primary)
-            # print(sgs_distribution.additional)
-            # print()
 
         logger.info(
             "Finished balancing (totally {} houses), dividing to age, sex and social groups now", houses_df.shape[0]
@@ -277,6 +274,8 @@ def balance_db(  # pylint: disable=too-many-arguments,too-many-locals,too-many-b
         sys.exit(1)
     except KeyboardInterrupt:
         logger.warning("Exiting by Ctrl+C hit")
+    finally:
+        logger.info("Finished!")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 """Services demands update logic is defined here."""
+
 import pandas as pd
 from loguru import logger
 from numpy import isnan, nan
@@ -52,8 +53,8 @@ def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,t
             )
         }
 
-        men_column = "(" + "+".join(f"men_{i}" for i in range(101)) + ")"
-        women_column = "(" + "+".join(f"women_{i}" for i in range(101)) + ")"
+        men_column = "(" + "+".join(f"men_{i}::integer" for i in range(101)) + ")"
+        women_column = "(" + "+".join(f"women_{i}::integer" for i in range(101)) + ")"
 
         houses_year = houses.copy()
         city_df = pd.DataFrame()
@@ -69,39 +70,17 @@ def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,t
             ):
                 houses_year = houses.copy()
                 houses_year["year"] = year
-            if "year_population_sgs" not in houses_year.columns:
-                res = conn.execute(
-                    text(
-                        "SELECT house_id, people"
-                        " FROM social_stats.calculated_people_houses"
-                        " WHERE year = :year"
-                        "   AND scenario = :scenario"
-                        "   AND house_id in (SELECT id FROM city_buildings)"
-                        " ORDER BY house_id"
-                    ),
-                    ({"city_id": city_id, "year": year, "scenario": scenario_name}),
-                ).all()
-                if len(res) == 0:
-                    logger.error(
-                        "Year {} data for city with id={} is missing social groups population data"
-                        " in calculated_people_houses!",
-                        year,
-                        city_id,
-                    )
-                    continue
-                idxs, values = map(list, zip(*res))
-                houses_year = houses_year.join(pd.Series(values, idxs, name="year_population_sgs"))
             if "year_population" not in houses_year.columns:
                 res = conn.execute(
                     text(
-                        "SELECT house_id, people"
-                        " FROM social_stats.calculated_people_houses"
+                        "SELECT building_id, people"
+                        " FROM social_stats.calculated_people_buildings"
                         " WHERE year = :year"
                         "   AND scenario = :scenario"
-                        "   AND house_id in (SELECT id FROM city_buildings)"
-                        " ORDER BY house_id"
+                        "   AND building_id in (SELECT id FROM city_buildings)"
+                        " ORDER BY building_id"
                     ),
-                    ({"city_id": city_id, "year": year, "scenario": scenario_name}),
+                    ({"year": year, "scenario": scenario_name}),
                 ).all()
                 if len(res) == 0:
                     logger.error(
@@ -125,8 +104,6 @@ def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,t
                 city_service_type_id,
                 service_type,
             ) in tqdm(service_types, desc=f"model@{year}", leave=False):
-                if f"{service_type}_service_demand_value_model" in houses_year.columns:
-                    continue
                 social_groups = tuple(
                     conn.execute(
                         text(
@@ -140,7 +117,7 @@ def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,t
                 )
                 res = conn.execute(
                     text(
-                        f" SELECT building_id, sum({men_column} + {women_column})::integer"
+                        f"SELECT building_id, sum({men_column} + {women_column})"
                         " FROM social_stats.sex_age_social_houses"
                         " WHERE year = :year AND scenario = :scenario"
                         "   AND social_group_id IN :social_groups AND building_id in (SELECT id FROM city_buildings)"
@@ -158,12 +135,10 @@ def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,t
                     continue
                 idxs, values = map(list, zip(*res))
                 houses_year = houses_year.join(
-                    pd.Series(values, index=idxs, name=f"{service_type}_service_demand_value_model"), how="left"
+                    pd.Series(values, idxs, name=f"{service_type}_service_demand_value_model"), how="left"
                 )
 
             for service_type in tqdm(services_normatives, desc=f"normative@{year}", leave=False):
-                if f"{service_type}_service_demand_value_normative" in houses_year.columns:
-                    continue
                 houses_year[f"{service_type}_service_demand_value_normative"] = (
                     houses_year["year_population"] * services_normatives[service_type]
                 ).apply(lambda x: round(x) if not isnan(x) else nan)
@@ -176,9 +151,8 @@ def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,t
         )
         creation_text = text(
             "CREATE TABLE IF NOT EXISTS provision.buildings_load_future ("
-            "   building_id integer NOT NULL,"
+            "   building_id integer NOT NULL REFERENCES buildings(id),"
             "   year smallint NOT NULL,"
-            "   year_population_sgs integer NOT NULL,"
             "   year_population integer NOT NULL,"
             + ",\n".join(f"{column} smallint" for column in columns[4:])
             + "   , PRIMARY KEY (building_id, year)"
@@ -210,9 +184,7 @@ def update_demands_table(  # pylint: disable=too-many-locals,too-many-branches,t
         )
 
         logger.info("Saving demands")
+        city_df.to_csv("city_df.csv")
         for _, row in tqdm(city_df.fillna(0).iterrows(), total=city_df.shape[0], desc="Uploading demands"):
-            conn.execute(
-                query,
-                dict(row.to_dict()),
-            )
+            conn.execute(query, row.to_dict())
         conn.commit()

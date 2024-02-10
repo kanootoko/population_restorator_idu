@@ -1,4 +1,5 @@
 """Forecasting-related methods are located here."""
+
 import multiprocessing as mp
 import time
 
@@ -7,6 +8,7 @@ from loguru import logger
 from population_restorator.forecaster import forecast_ages, forecast_people
 from population_restorator.models import SurvivabilityCoefficients
 from sqlalchemy import create_engine, text
+import sqlalchemy.exc
 
 from idu_balance_db.db.entities.enums import ForecastScenario
 from idu_balance_db.utils.tmp_db import clear_tmp_db_except_start
@@ -93,8 +95,11 @@ def forecast_people_scenarios_with_transfering_to_db(  # pylint: disable=too-man
                 for dsn in databases:
                     tmp_engine = create_engine(dsn)
                     with tmp_engine.connect() as tmp_conn:
-                        clear_tmp_db_except_start(tmp_conn, year_begin)
-                        tmp_conn.commit()
+                        try:
+                            clear_tmp_db_except_start(tmp_conn, year_begin)
+                            tmp_conn.commit()
+                        except sqlalchemy.exc.ProgrammingError as exc:
+                            logger.debug("Coult not clear temporary database (dsn={}): {!r}", dsn, exc)
 
             if years > 0:
                 fertility_coefficient = base_fertility * multiplier
